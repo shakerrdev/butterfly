@@ -93,6 +93,33 @@ def cmd_rate(args) -> None:
                            "economy", "objective", "shared").with_columns(pl.col(pl.Float64).round(2)))
 
 
+def cmd_benchmark(args) -> None:
+    from butterfly.baselines import SwingModel, train_swing
+    from butterfly.benchmark import evaluate, rating_table
+    from butterfly.dataset import load_matches
+    from butterfly.model import WinModel
+    from butterfly.training import time_split
+
+    matches = load_matches(args.data, args.map)
+    model = WinModel.load(args.model)
+    swing_dir = args.model / "swing"
+    if (swing_dir / "swing.txt").exists():
+        swing = SwingModel.load(swing_dir)
+    else:
+        valid = time_split(len(matches), args.valid_share)
+        swing = train_swing([m for m, v in zip(matches, valid) if not v] or matches)
+        swing.save(swing_dir)
+    cache = args.model / "benchmark_table.parquet"
+    if cache.exists() and not args.force:
+        table = pl.read_parquet(cache)
+    else:
+        table = rating_table(matches, model, swing, n_perm=args.perms)
+        table.write_parquet(cache)
+    report = evaluate(matches, table, history=args.history, valid_share=args.valid_share)
+    (args.model / "benchmark.json").write_text(json.dumps(report, indent=2))
+    print(json.dumps(report, indent=2))
+
+
 def main(argv: list[str] | None = None) -> None:
     ap = argparse.ArgumentParser(prog="butterfly")
     sub = ap.add_subparsers(required=True)
@@ -129,6 +156,16 @@ def main(argv: list[str] | None = None) -> None:
     p.add_argument("--model", type=Path, default=Path("models/ancient"))
     p.add_argument("--perms", type=int, default=16)
     p.set_defaults(func=cmd_rate)
+
+    p = sub.add_parser("benchmark", help="compare ratings by how well they predict later matches")
+    p.add_argument("--data", type=Path, default=Path("data/parsed/pro"))
+    p.add_argument("--map", default="de_ancient")
+    p.add_argument("--model", type=Path, default=Path("models/ancient"))
+    p.add_argument("--history", type=int, default=10)
+    p.add_argument("--valid-share", type=float, default=0.15)
+    p.add_argument("--perms", type=int, default=8)
+    p.add_argument("--force", action="store_true")
+    p.set_defaults(func=cmd_benchmark)
 
     args = ap.parse_args(argv)
     args.func(args)
