@@ -30,8 +30,11 @@ def _parse_one(demo: Path, out: Path, draws: bool | None, delete: bool) -> str:
 
 
 def cmd_download(args) -> None:
-    from butterfly.download import download_pro_demos
+    from butterfly.download import download_pro_demos, list_pro_demos, summarize
 
+    if args.dry_run:
+        print(summarize(list_pro_demos(args.map, args.years, args.tiers)))
+        return
     download_pro_demos(args.map, args.out, args.years, args.tiers)
     print(f"demos in {args.out}")
 
@@ -131,6 +134,7 @@ def main(argv: list[str] | None = None) -> None:
     p.add_argument("--out", type=Path, default=Path("data/demos/pro"))
     p.add_argument("--years", nargs="*")
     p.add_argument("--tiers", nargs="*")
+    p.add_argument("--dry-run", action="store_true", help="only list matching demos and their total size")
     p.set_defaults(func=cmd_download)
 
     p = sub.add_parser("parse", help="parse demos into match folders")
