@@ -19,11 +19,13 @@ def _order_key(demo: Path) -> str:
     return f"{int(parent):012d}-{demo.stem}" if parent.isdigit() else f"{int(demo.stat().st_mtime):012d}-{demo.stem}"
 
 
-def _parse_one(demo: Path, out: Path, draws: bool | None) -> str:
+def _parse_one(demo: Path, out: Path, draws: bool | None, delete: bool) -> str:
     from butterfly.parse import parse_demo
 
     match = parse_demo(demo, order_key=_order_key(demo), draw_possible=draws)
     match.save(out)
+    if delete:
+        demo.unlink()
     return f"{demo.name}: {match.meta['map']} {match.meta['score']} {match.meta['rounds']} rounds"
 
 
@@ -46,7 +48,7 @@ def cmd_parse(args) -> None:
     print(f"{len(todo)} of {len(demos)} demos to parse")
     draws = True if args.draws else None
     with ProcessPoolExecutor(max_workers=args.jobs) as pool:
-        futures = {pool.submit(_parse_one, demo, out, draws): demo for demo, out in todo}
+        futures = {pool.submit(_parse_one, demo, out, draws, args.delete): demo for demo, out in todo}
         for n, fut in enumerate(as_completed(futures), 1):
             demo = futures[fut]
             try:
@@ -137,6 +139,7 @@ def main(argv: list[str] | None = None) -> None:
     p.add_argument("--jobs", type=int, default=4)
     p.add_argument("--draws", action="store_true", help="matches can end 12-12 (MM competitive)")
     p.add_argument("--force", action="store_true")
+    p.add_argument("--delete", action="store_true", help="delete each demo once it is parsed")
     p.set_defaults(func=cmd_parse)
 
     p = sub.add_parser("train", help="train the match-win model")
