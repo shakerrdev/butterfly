@@ -190,6 +190,7 @@ def parse_demo(path: Path, order_key: str | None = None, draw_possible: bool | N
     plants = _event(parser, "bomb_planted", player=["X", "Y", "last_place_name"])
     defuses = _event(parser, "bomb_defused")
     hurts, blinds = _event(parser, "player_hurt"), _event(parser, "player_blind")
+    deaths = _event(parser, "player_death")
     util = _UtilityTracker(parser)
     blind_state = _Blinds(blinds)
 
@@ -318,7 +319,7 @@ def parse_demo(path: Path, order_key: str | None = None, draw_possible: bool | N
     names = list(GLOBAL_COLS) + [f"s{slot}_{c}" for slot in range(SLOTS) for c in PLAYER_COLS]
     states = states.hstack(pl.DataFrame(mat, schema=names))
 
-    events = _events(rounds, hurts, blinds, plants, defuses, sites)
+    events = _events(rounds, hurts, blinds, plants, defuses, deaths, sites)
     meta = {
         "demo": path.name,
         "map": header.get("map_name"),
@@ -359,7 +360,7 @@ def _site_ids(plants: pl.DataFrame) -> dict[int, int]:
     return ids
 
 
-def _events(rounds: list[Round], hurts, blinds, plants, defuses, sites: dict[int, int]) -> pl.DataFrame:
+def _events(rounds: list[Round], hurts, blinds, plants, defuses, deaths, sites: dict[int, int]) -> pl.DataFrame:
     rows = []
 
     def add(df: pl.DataFrame, kind: str, amount):
@@ -375,17 +376,22 @@ def _events(rounds: list[Round], hurts, blinds, plants, defuses, sites: dict[int
                 "x": r.get("user_X"),
                 "y": r.get("user_Y"),
                 "site": sites.get(r["site"]) if "site" in r and kind == "plant" else None,
+                "assister": _sid(r.get("assister_steamid")) if kind == "death" else None,
+                "flash_assist": bool(r.get("assistedflash")) if kind == "death" else None,
             })
 
     add(hurts, "damage", lambda r: r["dmg_health"] or 0)
     add(blinds, "blind", lambda r: r["blind_duration"] or 0)
     add(plants, "plant", lambda r: 1)
     add(defuses, "defuse", lambda r: 1)
+    add(deaths, "death", lambda r: 1)
     if not rows:
         return pl.DataFrame(schema={"tick": pl.Int64, "kind": pl.String, "attacker": pl.String,
                                     "victim": pl.String, "amount": pl.Float64, "x": pl.Float64,
-                                    "y": pl.Float64, "site": pl.Int64, "round": pl.Int64})
-    df = pl.DataFrame(rows, schema_overrides={"x": pl.Float64, "y": pl.Float64, "site": pl.Int64}).sort("tick")
+                                    "y": pl.Float64, "site": pl.Int64, "assister": pl.String,
+                                    "flash_assist": pl.Boolean, "round": pl.Int64})
+    df = pl.DataFrame(rows, schema_overrides={"x": pl.Float64, "y": pl.Float64, "site": pl.Int64,
+                                              "assister": pl.String, "flash_assist": pl.Boolean}).sort("tick")
     bounds = [(r.number, r.start, r.end) for r in rounds]
 
     def round_of(t: int) -> int:
