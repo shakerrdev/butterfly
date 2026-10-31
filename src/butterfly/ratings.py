@@ -27,6 +27,8 @@ def _intervals(match: Match, ticks: list[int], slots: dict[str, int]) -> list[In
                 if victim is not None:
                     interval.objective = victim
                 continue
+            if e["kind"] not in ("damage", "blind"):
+                continue
             attacker = slots.get(e["attacker"])
             if victim is None or attacker is None or attacker == victim:
                 continue
