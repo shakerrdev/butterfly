@@ -1,0 +1,12 @@
+__pycache__/
+*.py[oc]
+build/
+dist/
+*.egg-info
+.venv/
+.pytest_cache/
+
+data/
+models/
+*.dem
+*.parquet
